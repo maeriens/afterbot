@@ -2,6 +2,7 @@
 
 import os
 import time
+from datetime import datetime
 from slackclient import SlackClient
 from random import choice
 from get_slack_token import getToken
@@ -19,9 +20,9 @@ else:
 
 # Variables should be set to get Bot's ID and the client going.
 if not BOT_TOKEN:
-    raise Exception('BOT_TOKEN no debería estar vacía')
+    raise Exception('Variable SLACK_BOT_TOKEN no debería estar vacía')
 if not BOT_NAME:
-    raise Exception('BOT_NAME no debería estar vacía')
+    raise Exception('Variabl BOT_NAME no debería estar vacía')
 
 
 BOT_ID, slack_client = getToken(BOT_TOKEN, BOT_NAME)
@@ -32,7 +33,7 @@ valid_start = ['sale after?', 'pinta after?', 'afterrrrrr', 'after el viernes?'
                'after?']
 valid_action = ['+1', 'me sumo', 'me copa', '-1', 'me bajo', 'no me la banco']
 list_action = ['lista', 'ebrios', 'quienes van?']
-help_action = ['help', 'aiuda']
+help_action = ['help', 'ayuda', 'aiuda']
 ebrios = []
 
 # Reject user for not completing
@@ -63,7 +64,7 @@ def escuchamelo(command, channel, user):
     elif command in list_action:
         listar(channel, ebrios)
     else:
-        postea(channel, 'No entendí que dijiste, modulá mejor <@' + user + '>')
+        pass
 
 
 def traducitelo(slack_rtm_output):
@@ -76,10 +77,12 @@ def traducitelo(slack_rtm_output):
     output_list = slack_rtm_output
     if output_list and len(output_list) > 0:
         for output in output_list:
-            if output and 'text' in output and AT_BOT in output['text']:
-                # return text after the @ mention, whitespace removed
-                return output['text'].split(AT_BOT)[1].strip().lower(), \
-                    output['channel'], output['user']
+            if output and 'text' in output and output['user'] != BOT_ID:
+                if AT_BOT in output['text']:
+                    output['text'] = output['text']\
+                        .split(AT_BOT)[1].strip().lower()
+                return output['text'], output['channel'], output['user']
+
     return None, None, None
 
 
@@ -101,7 +104,7 @@ def sale_after(channel, ebrios, user):
         listar(channel, ebrios)
         return ebrios
     flags['after'] = 1
-    response = 'SALE AFTER! :beer:\n*La tiró *\n <@' + user + '>'
+    response = 'SALE AFTER! :beer:\n*La tiró!*\n <@' + user + '>'
     bardear(channel, user)
     postea(channel, response)
     ebrios.append(user)
@@ -143,12 +146,12 @@ def update_after(channel, command, ebrios, user):
 
 def aiuda(channel):
     """ Shows the help commands """
-    response = '*Arrancar un after:* _{0}_\n*Coparse/Ortibarse:* '
-    '_{1}_\n*Listar:* _{2}_\n*Ayuda:* _{3}_'.format(
-        ', '.join(valid_start),
-        ', '.join(valid_action),
-        ', '.join(listar),
-        ', '.join(ayuda))
+    response = '*Arrancar un after:* _{0}_\n*Coparse/Ortibarse:* ' \
+        '_{1}_\n*Listar:* _{2}_\n*Ayuda:* _{3}_'.format(
+            ', '.join(valid_start),
+            ', '.join(valid_action),
+            ', '.join(list_action),
+            ', '.join(help_action))
     postea(channel, response)
 
 
@@ -192,11 +195,21 @@ def postea(channel, response):
 if __name__ == '__main__':
     if slack_client.rtm_connect():
         print('Bot connected and running!')
+        sleeper = 0
         while True:
             command, channel, user = traducitelo(
                 slack_client.rtm_read())
             if command and channel:
                 escuchamelo(command, channel, user)
-            time.sleep(0.25)
+            time.sleep(1)
+            sleeper += 1
+            # On Sundays, we clear the after list. Don't wear pink.
+            if (sleeper % 86400 == 0) and \
+                    datetime.now().strftime('%A') == 'Sun':
+                sleeper = 0
+                flags['after'] = 0
+                ebrios = []
+                print('R E S T A R T I N G, D U D E')
+
     else:
         print("Connection failed. Invalid Slack token or bot ID?")
