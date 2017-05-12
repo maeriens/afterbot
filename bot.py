@@ -29,9 +29,11 @@ BOT_ID, slack_client = getToken(BOT_TOKEN, BOT_NAME)
 
 AT_BOT = '<@' + BOT_ID + '>'
 
-valid_start = ['sale after?', 'pinta after?', 'afterrrrrr', 'after el viernes?'
-               'after?']
-valid_action = ['+1', 'me sumo', 'me copa', '-1', 'me bajo', 'no me la banco']
+valid_start = ['sale after', 'sale after?', 'pinta after?', 'afterrrrrr',
+               'after el viernes?', 'after?']
+yeah_action =  ['+1', 'me sumo', 'me copa']
+boo_action = ['-1', 'me bajo', 'no me la banco']
+valid_action = yeah_action + boo_action
 list_action = ['lista', 'ebrios', 'quienes van?']
 help_action = ['help', 'ayuda', 'aiuda']
 ebrios = []
@@ -53,7 +55,7 @@ def escuchamelo(command, channel, user):
         a channel starts with D, it's a private channel.
     """
     if channel[0] == 'D':
-        return postea(channel, 'Solo funciono en canales baby ;)')
+        return postea(channel, choice(THE_BAD_GUYS['direct']))
     global ebrios
     if command in help_action:
         aiuda(channel)
@@ -101,10 +103,9 @@ def sale_after(channel, ebrios, user):
     if flags['after']:
         response = 'Ya hay un after!'
         postea(channel, response)
-        listar(channel, ebrios)
         return ebrios
     flags['after'] = 1
-    response = 'SALE AFTER! :beer:\n*La tiró!*\n <@' + user + '>'
+    response = 'SALE AFTER! :beer:\n*La tiró* <@' + user + '> *!*'
     bardear(channel, user)
     postea(channel, response)
     ebrios.append(user)
@@ -121,17 +122,15 @@ def update_after(channel, command, ebrios, user):
         response = 'No hay after armado, podrías armar uno <@' + user + '>'
         postea(channel, response)
         return ebrios
-    if command.startswith('+'):
+    if command in yeah_action:
         if user not in ebrios:
             ebrios.append(user)
             response = '<@' + user + '> se suma! :beer:'
             bardear(channel, user)
         else:
-            response = 'Ni estabas en la lista...'
-    elif command.startswith('-'):
-        if user not in ebrios:
-            response = 'What? You were not even in the list, <@' + user + '>'
-        else:
+            response = 'Ya estabas en la lista...'
+    elif command in boo_action:
+        if user in ebrios:
             response = '<@' + user + '> se baja... :snowflake:'
             ebrios.remove(user)
             if not ebrios:
@@ -139,8 +138,9 @@ def update_after(channel, command, ebrios, user):
                 response += '\nBueh, re ortibas, no queda nadie! Se cancela!'
                 postea(channel, response)
                 return ebrios
+        else:
+            response = 'Ni estás en la lista, <@' + user + '>'
     postea(channel, response)
-    listar(channel, ebrios)
     return ebrios
 
 
@@ -160,7 +160,7 @@ def listar(channel, ebrios):
     if flags['after']:
         response = 'Los que se coparon:'
         for ebrio in ebrios:
-            response += '\n <@' + user + '>'
+            response += '\n' + vos_quien_sos(ebrio) + ''
     else:
         response = 'No hay after armado, podrías armar uno <@' + user + '>'
     postea(channel, response)
@@ -174,11 +174,11 @@ def bardear(channel, user):
     """
     name = vos_quien_sos(user)
     if name in THE_BAD_GUYS.keys():
-        if not flags['after']:
+        if flags['after']:
             msg = 'Ah no, mirá quién se suma! '
         else:
             msg = 'PERO MIRÁ QUIEN ORGANIZA! '
-        msg += name + '! ' + choice(THE_BAD_GUYS[name])
+        msg += '<@' + name + '>! ' + choice(THE_BAD_GUYS[name])
         postea(channel, msg)
 
 
@@ -196,20 +196,21 @@ if __name__ == '__main__':
     if slack_client.rtm_connect():
         print('Bot connected and running!')
         sleeper = 0
+        step = 0.25
         while True:
             command, channel, user = traducitelo(
                 slack_client.rtm_read())
             if command and channel:
                 escuchamelo(command, channel, user)
-            time.sleep(1)
-            sleeper += 1
+            time.sleep(step)
+            sleeper += step
             # On Sundays, we clear the after list. Don't wear pink.
             if (sleeper % 86400 == 0) and \
                     datetime.now().strftime('%A') == 'Sun':
                 sleeper = 0
                 flags['after'] = 0
                 ebrios = []
-                print('R E S T A R T I N G, D U D E')
+                postea(channel, 'R E S T A R T I N G, D U D E')
 
     else:
         print("Connection failed. Invalid Slack token or bot ID?")
