@@ -106,7 +106,6 @@ def sale_after(channel, ebrios, user):
         return ebrios
     flags['after'] = 1
     response = 'SALE AFTER! :beer:\n*La tiró* <@' + user + '> *!*'
-    bardear(channel, user)
     postea(channel, response)
     ebrios.append(user)
     return ebrios
@@ -125,8 +124,8 @@ def update_after(channel, command, ebrios, user):
     if command in yeah_action:
         if user not in ebrios:
             ebrios.append(user)
-            response = '<@' + user + '> se suma! :beer:'
-            bardear(channel, user)
+            if(bardear(channel, user)):
+                response = '<@' + user + '> se suma! :beer:'
         else:
             response = 'Ya estabas en la lista...'
     elif command in boo_action:
@@ -180,6 +179,8 @@ def bardear(channel, user):
             msg = 'PERO MIRÁ QUIEN ORGANIZA! '
         msg += '<@' + name + '>! ' + choice(THE_BAD_GUYS[name])
         postea(channel, msg)
+    else:
+        return False
 
 
 def postea(channel, response):
