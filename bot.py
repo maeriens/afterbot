@@ -2,15 +2,18 @@
 
 import os
 import time
+from re import search, escape
 from datetime import datetime
 from slackclient import SlackClient
 from random import choice
 from get_slack_token import getToken
 from bad_guys import THE_BAD_GUYS as imported_guys
+from variables import SLACK_BOT_TOKEN, BOT_NAME
 
 # starterbot's ID as an environment variable. Slack bot token
 # can be defined as an ENVIRONMENT variable called SLACK_BOT_TOKEN
-SLACK_BOT_TOKEN = ''  # 'SLACK TOKEN FOR BOT GOES HERE'
+# 'SLACK TOKEN FOR BOT GOES HERE'
+SLACK_BOT_TOKEN = ''
 BOT_NAME = ''  # 'BOT NAME HERE'
 
 if os.environ.get('SLACK_BOT_TOKEN'):
@@ -29,25 +32,26 @@ BOT_ID, slack_client = getToken(BOT_TOKEN, BOT_NAME)
 
 AT_BOT = '<@' + BOT_ID + '>'
 
-valid_start = ['sale after', 'sale after?', 'pinta after?', 'afterrrrrr',
-               'after el viernes?', 'after?']
-yeah_action =  ['+1', 'me sumo', 'me copa']
+valid_start = ['sale after', 'pinta after', 'afterrrrrr',
+               'after el viernes', 'after?']
+yeah_action = ['+1', 'me sumo', 'me copa']
 boo_action = ['-1', 'me bajo', 'no me la banco']
 valid_action = yeah_action + boo_action
-list_action = ['lista', 'ebrios', 'quienes van?']
+list_action = ['lista', 'ebrios', 'quienes van']
 help_action = ['help', 'ayuda', 'aiuda']
-ebrios = []
+all_actions = valid_start + valid_action + list_action + help_action
+
+ebrios = {'Office1': [], 'Office2': []}
 
 # Reject user for not completing
 if not (valid_start and valid_action and list_action and help_action):
     raise Exception('Pero definime las variables querido')
-flags = {'after': 0}
 
 # Import the users which will prompt extra responses
 THE_BAD_GUYS = imported_guys
 
 
-def escuchamelo(command, channel, user):
+def escuchamelo(command, channel, user, ebrios):
     """
         Receives commands directed at the bot and determines if they
         are valid commands. If so, then acts on the commands. If not,
@@ -56,17 +60,48 @@ def escuchamelo(command, channel, user):
     """
     if channel[0] == 'D':
         return postea(channel, choice(THE_BAD_GUYS['direct']))
-    global ebrios
     if command in help_action:
         aiuda(channel)
-    elif command in valid_start:
-        ebrios = sale_after(channel, ebrios, user)
-    elif command in valid_action:
-        ebrios = update_after(channel, command, ebrios, user)
-    elif command in list_action:
-        listar(channel, ebrios)
+
+    action, where = analiza(command)
+
+    if action:
+        if not where:
+            return postea(channel, 'No me dijiste dónde...')
+        elif where.isnumeric():
+            return postea(channel, 'Los dos lugares no querido...')
+        if action in valid_start:
+            ebrios = sale_after(channel, where, ebrios, user)
+        elif action in valid_action:
+            ebrios = update_after(channel, action, where, ebrios, user)
+        elif action in list_action:
+            listar(channel, where, ebrios)
     else:
         pass
+
+
+def analiza(command):
+    """
+        Regex to get what to do. I hate this function. It's personal.
+        I escape the simbols that would break the regex with 'scape'.
+        Checks what action and where. Returns a string 1 if both locations.
+    """
+    action, where = None, None
+
+    for option in all_actions:
+        action_found = search(escape(option), command)
+        if action_found:
+            action = action_found.group(0)
+            break
+
+    if 'office1' in command and 'office2' in command:
+        where = '1'
+    else:
+        for place in ['office1', 'office2']:
+            where_found = search(place, command)
+            if where_found:
+                where = (where_found.group(0)).capitalize()
+    return action, where
 
 
 def traducitelo(slack_rtm_output):
@@ -96,57 +131,72 @@ def vos_quien_sos(user):
     return user_info['user']['name']
 
 
-def sale_after(channel, ebrios, user):
+def sale_after(channel, where, ebrios, user):
     """
         Start an after office. YOLO BILINGUAL.
     """
-    if flags['after']:
-        response = 'Ya hay un after!'
-        postea(channel, response)
-        return ebrios
-    flags['after'] = 1
-    response = 'SALE AFTER! :beer:\n*La tiró* <@' + user + '> *!*'
+    trampa = ['Office1', 'Office2']
+    trampa.remove(where)
+    if not ebrios[where]:
+        if user in ebrios[trampa[0]]:
+            return postea(channel, 'Pero si estás en el otro...')
+        ebrios[where].append(user)
+    else:
+        return postea(channel, 'Ya hay un after ahí...')
+    response = 'SALE AFTER en ' + where + ' :beer:\n' \
+        '*La tiró* <@' + user + '> *!*'
     postea(channel, response)
-    ebrios.append(user)
-    return ebrios
 
 
-def update_after(channel, command, ebrios, user):
+def update_after(channel, action, where, ebrios, user):
     """
         This docblock makes no sense, the name of the function
         was really clear, do you get the iron-y?
         Someone with anemia wouldn't either.
     """
-    if not flags['after']:
-        response = 'No hay after armado, podrías armar uno <@' + user + '>'
-        postea(channel, response)
-        return ebrios
-    if command in yeah_action:
-        if user not in ebrios:
-            ebrios.append(user)
-            if(bardear(channel, user)):
+    if where:
+        trampa = ['Office1', 'Office2']
+        trampa.remove(where)
+    response = ''
+    if not ebrios[where]:
+        if user in ebrios[trampa[0]]:
+            response = "Pero si estás en el otro..."
+        else:
+            response = 'No hay after armado, podrías armar uno <@' + user + '>'
+        return postea(channel, response)
+    elif action in yeah_action:
+        if user in ebrios[trampa[0]]:
+            response = "Ya estás en el otro after, vas a meter viajecito?"
+        elif user not in ebrios[where]:
+            ebrios[where].append(user)
+            if(not bardear(channel, user)):
                 response = '<@' + user + '> se suma! :beer:'
         else:
             response = 'Ya estabas en la lista...'
-    elif command in boo_action:
-        if user in ebrios:
-            response = '<@' + user + '> se baja... :snowflake:'
-            ebrios.remove(user)
-            if not ebrios:
-                flags['after'] = 0
-                response += '\nBueh, re ortibas, no queda nadie! Se cancela!'
-                postea(channel, response)
-                return ebrios
+    elif action in boo_action:
+        if user in ebrios['Office1']:
+            where = 'Office1'
+            ebrios[where].remove(user)
+        elif user in ebrios['Office2']:
+            where = 'Office2'
+            ebrios[where].remove(user)
+        response = '<@' + user + '> se baja... :snowflake:'
+
+        if not ebrios[where]:
+            response += '\nBueh, re ortibas, no queda nadie! Se cancela!'
+            return postea(channel, response)
         else:
             response = 'Ni estás en la lista, <@' + user + '>'
+    else:
+        return postea(channel, 'No entendí')
     postea(channel, response)
-    return ebrios
+    return ebrios[where]
 
 
 def aiuda(channel):
     """ Shows the help commands """
-    response = '*Arrancar un after:* _{0}_\n*Coparse/Ortibarse:* ' \
-        '_{1}_\n*Listar:* _{2}_\n*Ayuda:* _{3}_'.format(
+    response = '*Arrancar un after:* _{0}_ + *dónde*\n*Coparse/Ortibarse:* ' \
+        '_{1}_ + *dónde*\n*Listar:* _{2}_ + *dónde*\n*Ayuda:* _{3}_'.format(
             ', '.join(valid_start),
             ', '.join(valid_action),
             ', '.join(list_action),
@@ -154,14 +204,15 @@ def aiuda(channel):
     postea(channel, response)
 
 
-def listar(channel, ebrios):
+def listar(channel, where, ebrios):
     """ Lists the cool guys who added themselves """
-    if flags['after']:
-        response = 'Los que se coparon:'
-        for ebrio in ebrios:
+    if ebrios[where]:
+        response = 'Los que se coparon en ' + where + ':'
+        for ebrio in ebrios[where]:
             response += '\n' + vos_quien_sos(ebrio) + ''
     else:
-        response = 'No hay after armado, podrías armar uno <@' + user + '>'
+        response = 'No hay after armado en ' + where + \
+            ', podrías armar uno <@' + user + '>'
     postea(channel, response)
 
 
@@ -169,18 +220,19 @@ def bardear(channel, user):
     """
         This command returns silly answers predefined in the corresponding
         txt files in the txt folder (Because I wanted to work with files)
-        to users listed in the THE_BAD_GUYS dictionary.
+        to users listed in the THE_BAD_GUYS dictionary. If not found, it
+        simply returns False so a default answer is given.
     """
     name = vos_quien_sos(user)
     if name in THE_BAD_GUYS.keys():
-        if flags['after']:
+        if ebrios['Office1'] or ebrios['Office2']:
             msg = 'Ah no, mirá quién se suma! '
         else:
             msg = 'PERO MIRÁ QUIEN ORGANIZA! '
         msg += '<@' + name + '>! ' + choice(THE_BAD_GUYS[name])
         postea(channel, msg)
-    else:
-        return False
+        return True
+    return False
 
 
 def postea(channel, response):
@@ -202,15 +254,16 @@ if __name__ == '__main__':
             command, channel, user = traducitelo(
                 slack_client.rtm_read())
             if command and channel:
-                escuchamelo(command, channel, user)
+                print(command)
+                escuchamelo(command, channel, user, ebrios)
             time.sleep(step)
             sleeper += step
             # On Sundays, we clear the after list. Don't wear pink.
             if (sleeper % 86400 == 0) and \
                     datetime.now().strftime('%A') == 'Sun':
                 sleeper = 0
-                flags['after'] = 0
-                ebrios = []
+                ebrios['Office2'] = []
+                ebrios['Office1'] = []
                 postea(channel, 'R E S T A R T I N G, D U D E')
 
     else:
