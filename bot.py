@@ -2,7 +2,7 @@
 
 import os
 import time
-from re import search, escape
+from re import search, escape, sub
 from datetime import datetime
 from slackclient import SlackClient
 from random import choice
@@ -60,21 +60,27 @@ def escuchamelo(command, channel, user, ebrios):
     if channel[0] == 'D':
         return postea(channel, choice(THE_BAD_GUYS['direct']))
     if command in help_action:
-        aiuda(channel)
+        return aiuda(channel)
 
     action, where = analiza(command)
 
     if action:
-        if not where:
-            return postea(channel, 'No me dijiste dónde...')
-        elif where.isnumeric():
-            return postea(channel, 'Los dos lugares no querido...')
-        if action in valid_start:
-            ebrios = sale_after(channel, where, ebrios, user)
-        elif action in valid_action:
-            ebrios = update_after(channel, action, where, ebrios, user)
-        elif action in list_action:
-            listar(channel, where, ebrios)
+        if where:
+            if where.isnumeric():
+                return postea(channel, 'Los dos lugares no querido...')
+            elif action in valid_start:
+                ebrios = sale_after(channel, where, ebrios, user)
+            elif action in valid_action:
+                ebrios = update_after(channel, action, where, ebrios, user)
+            elif action in list_action:
+                listar(channel, where, ebrios)
+        else:
+            if ebrios['Office1'] or ebrios['Office2'] or action in valid_start:
+                response = 'No me dijiste dónde...'
+            else:
+                response = 'No hay after armado, podrías ' \
+                    'armar uno <@' + user + '>'
+            return postea(channel, response)
     else:
         pass
 
@@ -176,16 +182,15 @@ def update_after(channel, action, where, ebrios, user):
         if user in ebrios['Office1']:
             where = 'Office1'
             ebrios[where].remove(user)
+            response = '<@' + user + '> se baja... :snowflake:'
         elif user in ebrios['Office2']:
             where = 'Office2'
             ebrios[where].remove(user)
-        response = '<@' + user + '> se baja... :snowflake:'
-
-        if not ebrios[where]:
-            response += '\nBueh, re ortibas, no queda nadie! Se cancela!'
-            return postea(channel, response)
+            response = '<@' + user + '> se baja... :snowflake:'
         else:
             response = 'Ni estás en la lista, <@' + user + '>'
+        if not ebrios[where]:
+            response += '\nBueh, re ortibas, no queda nadie! Se cancela!'
     else:
         return postea(channel, 'No entendí')
     postea(channel, response)
@@ -250,9 +255,11 @@ if __name__ == '__main__':
         sleeper = 0
         step = 0.25
         while True:
-            command, channel, user = traducitelo(
-                slack_client.rtm_read())
+            command, channel, user = traducitelo(slack_client.rtm_read())
             if command and channel:
+                command = sub(r'\\u\w{4}', '',
+                              command.encode('latin-1', 'backslashreplace')
+                              .decode('latin-1'))
                 print(command)
                 escuchamelo(command, channel, user, ebrios)
             time.sleep(step)
@@ -261,9 +268,8 @@ if __name__ == '__main__':
             if (sleeper % 86400 == 0) and \
                     datetime.now().strftime('%A') == 'Sun':
                 sleeper = 0
-                ebrios['Office2'] = []
-                ebrios['Office1'] = []
+                for key in ebrios.keys():
+                    ebrios[key] = []
                 postea(channel, 'R E S T A R T I N G, D U D E')
-
     else:
         print("Connection failed. Invalid Slack token or bot ID?")
